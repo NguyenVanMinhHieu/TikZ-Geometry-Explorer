@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { GoogleGenAI, Modality } from "@google/genai";
+import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { 
   Play, 
   Pause, 
@@ -12,7 +12,12 @@ import {
   ChevronRight,
   Maximize2,
   Copy,
-  Check
+  Check,
+  Upload,
+  Loader2,
+  Table,
+  Box,
+  Axis3d
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import 'katex/dist/katex.min.css';
@@ -50,7 +55,10 @@ interface Problem {
   title: string;
   category: string;
   text: string;
-  choices: Choice[];
+  type: 'multiple_choice' | 'true_false' | 'short_answer' | 'essay';
+  choices?: Choice[];
+  answer?: string; // For short_answer
+  solution?: string; // For essay or general solution
   tikz: string;
   visualType: 'table' | 'geometry' | 'xyz';
   svgPreview: React.ReactNode;
@@ -62,6 +70,7 @@ const PROBLEMS_LIBRARY: Problem[] = [
     title: 'Khảo sát hàm số',
     category: 'Giải tích 12',
     text: 'Cho hàm số $y = f(x)$ có bảng biến thiên như sau. Mệnh đề nào sau đây đúng?',
+    type: 'multiple_choice',
     choices: [
       { id: 'a', text: 'Hàm số đồng biến trên $(-\\infty; 3)$', isTrue: false, solution: 'Khoảng này chứa cả đồng và nghịch biến. (Sai)' },
       { id: 'b', text: 'Hàm số đồng biến trên $(-1; 3)$', isTrue: false, solution: 'Chứa điểm đổi dấu. (Sai)' },
@@ -103,6 +112,7 @@ const PROBLEMS_LIBRARY: Problem[] = [
     id: 'p2',
     title: 'Tọa độ Oxyz',
     category: 'Hình học 12',
+    type: 'multiple_choice',
     text: 'Trong không gian Oxyz, cho mặt cầu $(S): (x-1)^2 + (y+2)^2 + z^2 = 9$. Tâm $I$ và bán kính $R$ của mặt cầu là:',
     choices: [
       { id: 'a', text: '$I(1; -2; 0), R=3$', isTrue: true, solution: 'Dựa vào phương trình mặt cầu loại 1: $(x-a)^2+(y-b)^2+(z-c)^2=R^2$ ta có $a=1, b=-2, c=0, R=\\sqrt{9}=3$. (Đúng)' },
@@ -133,6 +143,7 @@ const PROBLEMS_LIBRARY: Problem[] = [
     id: 'p3',
     title: 'Khối đa diện',
     category: 'Hình học 12',
+    type: 'multiple_choice',
     text: 'Cho hình chóp $S.ABC$ có đáy $ABC$ là tam giác đều cạnh $a$, $SA$ vuông góc với mặt phẳng đáy và $SA = a\\sqrt{3}$. Tính thể tích $V$ của khối chóp $S.ABC$.',
     choices: [
       { id: 'a', text: '$V = \\frac{a^3}{4}$', isTrue: true, solution: '$S_{ABC} = \\frac{a^2\\sqrt{3}}{4}$. Chiều cao $h=a\\sqrt{3}$. $V = \\frac{1}{3} S.h = \\frac{1}{3} \\frac{a^2\\sqrt{3}}{4} a\\sqrt{3} = \\frac{a^3}{4}$. (Đúng)' },
@@ -157,6 +168,7 @@ const PROBLEMS_LIBRARY: Problem[] = [
     id: 'p4',
     title: 'Góc giữa đường thẳng và mặt phẳng',
     category: 'Hình học 11-12',
+    type: 'multiple_choice',
     text: 'Cho hình chóp $S.ABCD$ có đáy $ABCD$ là hình vuông cạnh $a$. $SA \\perp (ABCD)$ và $SA = a\\sqrt{2}$. Góc giữa đường thẳng $SC$ và mặt phẳng $(ABCD)$ là:',
     choices: [
       { id: 'a', text: '$30^\\circ$', isTrue: false, solution: 'Tan của góc là $SA/AC = a\\sqrt{2}/(a\\sqrt{2}) = 1$. (Sai)' },
@@ -186,10 +198,12 @@ const PROBLEMS_LIBRARY: Problem[] = [
 ];
 
 export default function App() {
+  const [problems, setProblems] = useState<Problem[]>(PROBLEMS_LIBRARY);
   const [currentProblemIdx, setCurrentProblemIdx] = useState(0);
-  const currentProblem = PROBLEMS_LIBRARY[currentProblemIdx];
+  const currentProblem = problems[currentProblemIdx];
   const [isPlaying, setIsPlaying] = useState(false);
   const [isSynthesizing, setIsSynthesizing] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [lastAudioBlob, setLastAudioBlob] = useState<Blob | null>(null);
   const [copied, setCopied] = useState(false);
   const [userAnswers, setUserAnswers] = useState<Record<string, 'true' | 'false' | null>>({
@@ -336,6 +350,104 @@ export default function App() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const parseTexFile = async (content: string) => {
+    try {
+      setIsUploading(true);
+      const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+      
+      const response = await ai.models.generateContent({
+        model: "gemini-3.1-pro-preview",
+        contents: [
+          {
+            role: "user",
+            parts: [{
+              text: `Bạn là một chuyên gia LaTeX và Toán học. Hãy phân tích nội dung tệp .tex sau và trích xuất các bài toán thuộc các dạng: trắc nghiệm (multiple_choice), đúng sai (true_false), trả lời ngắn (short_answer), và tự luận (essay).
+              Nội dung TeX:
+              ${content}
+              
+              Quy tắc trích xuất:
+              1. Phân loại chuyên đề (Giải tích, Oxyz, Hình không gian...).
+              2. Xác định kiểu trực quan hóa (table, geometry, xyz).
+              3. Phân loại đúng questionType (multiple_choice, true_false, short_answer, essay).
+              4. Đối với trắc nghiệm Đúng/Sai: trả về mảng 4 ý (câu lệnh \\choice trong TeX thường tương ứng với multiple_choice, còn các lệnh đặc thù cho Đ/S sẽ ánh xạ vào true_false).
+              5. Đối với tự luận/trả lời ngắn: cung cấp nội dung đáp án trong trường 'answer' hoặc 'solution'.
+              6. Tạo một SVG preview đơn giản thể hiện nội dung bài toán một cách tượng trưng.
+              7. Kết quả phải là một mảng JSON.`
+            }]
+          }
+        ],
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                id: { type: Type.STRING },
+                title: { type: Type.STRING },
+                category: { type: Type.STRING },
+                text: { type: Type.STRING },
+                type: { type: Type.STRING, enum: ['multiple_choice', 'true_false', 'short_answer', 'essay'] },
+                visualType: { type: Type.STRING, enum: ['table', 'geometry', 'xyz'] },
+                tikz: { type: Type.STRING },
+                choices: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      id: { type: Type.STRING },
+                      text: { type: Type.STRING },
+                      isTrue: { type: Type.BOOLEAN },
+                      solution: { type: Type.STRING }
+                    },
+                    required: ["id", "text", "isTrue", "solution"]
+                  }
+                },
+                answer: { type: Type.STRING },
+                solution: { type: Type.STRING },
+                svgPreviewString: { type: Type.STRING }
+              },
+              required: ["id", "title", "category", "text", "type", "visualType", "tikz", "svgPreviewString"]
+            }
+          }
+        }
+      });
+
+      const parsedData = JSON.parse(response.text || "[]");
+      
+      const newProblems: Problem[] = parsedData.map((data: any) => ({
+        ...data,
+        svgPreview: (
+          <svg viewBox="0 0 300 200" className="w-full h-auto p-4" dangerouslySetInnerHTML={{ __html: data.svgPreviewString }} />
+        )
+      }));
+
+      if (newProblems.length > 0) {
+        setProblems(prev => [...prev, ...newProblems]);
+        setCurrentProblemIdx(problems.length); // Switch to the first newly added problem
+      } else {
+        alert("Không tìm thấy bài toán nào hợp lệ trong tệp .tex.");
+      }
+    } catch (error) {
+      console.error("Error parsing TeX:", error);
+      alert("Đã xảy ra lỗi khi xử lý tệp .tex. Vui lòng kiểm tra lại nội dung.");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const content = event.target?.result as string;
+        parseTexFile(content);
+      };
+      reader.readAsText(file);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-bg text-ink font-sans selection:bg-blue-100 flex flex-col">
       {/* Editorial Header */}
@@ -347,7 +459,8 @@ export default function App() {
                onChange={(e) => setCurrentProblemIdx(parseInt(e.target.value))}
                className="w-full p-2 border border-border rounded-sm bg-paper text-xs font-serif italic"
              >
-                {PROBLEMS_LIBRARY.map((p, i) => (
+                <option disabled>Chọn bài tập ({problems.length} bài)</option>
+                {problems.map((p, i) => (
                   <option key={p.id} value={i}>Bài {i+1}: {p.title}</option>
                 ))}
              </select>
@@ -393,18 +506,33 @@ export default function App() {
 
       <div className="flex-1 flex overflow-hidden">
         {/* Sidebar Navigation */}
-        <aside className="hidden md:flex w-64 border-r border-border bg-paper flex-col overflow-y-auto">
-           <div className="p-6 border-b border-border">
+        <aside className="hidden md:flex w-72 border-r border-border bg-paper flex-col overflow-y-auto">
+           <div className="p-6 border-b border-border flex justify-between items-center">
               <h2 className="text-[10px] uppercase font-bold tracking-[0.2em] text-muted">Thư viện bài tập</h2>
+              <span className="bg-muted/10 text-muted px-2 py-0.5 rounded-full text-[9px] font-mono">{problems.length} bài</span>
            </div>
+           
+           <div className="p-4 border-b border-border bg-paper-alt">
+              <label className="flex items-center justify-center gap-2 w-full p-3 border border-dashed border-border rounded-sm cursor-pointer hover:bg-ink hover:text-white transition-all group">
+                {isUploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} className="group-hover:scale-110 transition-transform" />}
+                <span className="text-[10px] font-mono uppercase tracking-widest">{isUploading ? 'Đang phân tích...' : 'Upload .tex'}</span>
+                <input type="file" accept=".tex" className="hidden" onChange={handleFileChange} disabled={isUploading} />
+              </label>
+           </div>
+
            <nav className="flex-1 p-4 space-y-2">
-              {PROBLEMS_LIBRARY.map((problem, idx) => (
+              {problems.map((problem, idx) => (
                 <button
                   key={problem.id}
                   onClick={() => setCurrentProblemIdx(idx)}
                   className={`w-full text-left p-4 rounded-sm transition-all group ${currentProblemIdx === idx ? 'bg-ink text-white shadow-md' : 'hover:bg-paper-alt border border-transparent hover:border-border'}`}
                 >
-                  <p className={`text-[9px] uppercase tracking-widest mb-1 ${currentProblemIdx === idx ? 'text-white/60' : 'text-muted'}`}>{problem.category}</p>
+                  <div className="flex items-center justify-between mb-1">
+                    <p className={`text-[9px] uppercase tracking-widest ${currentProblemIdx === idx ? 'text-white/60' : 'text-muted'}`}>{problem.category}</p>
+                    {problem.visualType === 'table' && <Table size={10} className="opacity-50" />}
+                    {problem.visualType === 'geometry' && <Box size={10} className="opacity-50" />}
+                    {problem.visualType === 'xyz' && <Axis3d size={10} className="opacity-50" />}
+                  </div>
                   <p className="font-serif italic text-[14px] leading-tight group-hover:translate-x-1 transition-transform">{problem.title}</p>
                 </button>
               ))}
@@ -451,7 +579,9 @@ export default function App() {
               <div className="flex items-center justify-between">
                 <div className="text-[11px] font-bold uppercase tracking-[0.1em] text-muted flex items-center gap-2">
                   <span className="h-[1px] w-6 bg-border"></span>
-                  Trắc nghiệm Đúng/Sai
+                  {currentProblem.type === 'multiple_choice' ? 'Trắc nghiệm (Chọn 1)' : 
+                   currentProblem.type === 'true_false' ? 'Trắc nghiệm Đúng/Sai' :
+                   currentProblem.type === 'short_answer' ? 'Trả lời ngắn' : 'Câu hỏi tự luận'}
                 </div>
                 <button 
                   onClick={() => setShowResults(!showResults)}
@@ -462,44 +592,120 @@ export default function App() {
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 gap-4">
-                {currentProblem.choices.map((choice, idx) => (
-                  <div key={choice.id} className="flex flex-col md:flex-row md:items-center gap-4 p-6 bg-paper rounded-xs border border-border group hover:shadow-sm transition-all">
-                    <div className="flex-1 text-[15px] leading-relaxed text-ink/90 italic font-serif">
-                      <span className="font-bold mr-2 uppercase text-muted font-sans text-xs">{choice.id})</span>
-                      <FormattedMath text={choice.text} />
-                    </div>
-                    
-                    <div className="flex gap-2">
-                      <button 
-                        onClick={() => handleAnswer(choice.id, 'true')}
-                        className={`px-4 py-1.5 text-[9px] uppercase font-bold tracking-widest border rounded-sm transition-all ${userAnswers[choice.id] === 'true' ? 'bg-ink text-white border-ink' : 'border-border text-muted hover:border-ink hover:text-ink'}`}
-                      >
-                        Đúng
-                      </button>
-                      <button 
-                        onClick={() => handleAnswer(choice.id, 'false')}
-                        className={`px-4 py-1.5 text-[9px] uppercase font-bold tracking-widest border rounded-sm transition-all ${userAnswers[choice.id] === 'false' ? 'bg-ink text-white border-ink' : 'border-border text-muted hover:border-ink hover:text-ink'}`}
-                      >
-                        Sai
-                      </button>
-                      
-                      <AnimatePresence>
-                        {showResults && (
-                          <motion.div 
-                            initial={{ opacity: 0, x: 10 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            className={`ml-2 px-3 py-1.5 text-[9px] uppercase font-bold rounded-sm flex items-center gap-1.5 ${choice.isTrue ? 'bg-green-100 text-true' : 'bg-red-100 text-false'}`}
-                          >
-                            {choice.isTrue ? <CheckCircle2 size={12}/> : <XCircle size={12}/>}
-                            {choice.isTrue ? 'Đ' : 'S'}
-                          </motion.div>
+              {/* Multiple Choice Layout */}
+              {currentProblem.type === 'multiple_choice' && currentProblem.choices && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {currentProblem.choices.map((choice) => (
+                    <button
+                      key={choice.id}
+                      onClick={() => !showResults && setUserAnswers(prev => ({ ...prev, [currentProblem.id + choice.id]: 'true' }))}
+                      className={`p-6 bg-paper rounded-xs border transition-all text-left flex items-start gap-4 ${
+                        userAnswers[currentProblem.id + choice.id] === 'true' 
+                          ? (showResults ? (choice.isTrue ? 'border-green-500 bg-green-50' : 'border-red-500 bg-red-50') : 'border-ink bg-paper-alt')
+                          : 'border-border hover:border-ink/50'
+                      }`}
+                    >
+                      <span className="w-6 h-6 rounded-full border border-border flex items-center justify-center shrink-0 font-bold text-[10px]">{choice.id.toUpperCase()}</span>
+                      <div className="flex-1">
+                        <div className="font-serif italic text-[15px]"><FormattedMath text={choice.text} /></div>
+                        {showResults && userAnswers[currentProblem.id + choice.id] === 'true' && (
+                          <div className={`mt-2 text-[11px] border-t pt-2 ${choice.isTrue ? 'text-green-700' : 'text-red-700'}`}>
+                            <FormattedMath text={choice.solution} />
+                          </div>
                         )}
-                      </AnimatePresence>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* True/False Layout */}
+              {currentProblem.type === 'true_false' && currentProblem.choices && (
+                <div className="grid grid-cols-1 gap-4">
+                  {currentProblem.choices.map((choice) => (
+                    <div key={choice.id} className="flex flex-col md:flex-row md:items-center gap-4 p-6 bg-paper rounded-xs border border-border group hover:shadow-sm transition-all">
+                      <div className="flex-1 text-[15px] leading-relaxed text-ink/90 italic font-serif">
+                        <span className="font-bold mr-2 uppercase text-muted font-sans text-xs">{choice.id})</span>
+                        <FormattedMath text={choice.text} />
+                      </div>
+                      
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => handleAnswer(choice.id, 'true')}
+                          className={`px-4 py-1.5 text-[9px] uppercase font-bold tracking-widest border rounded-sm transition-all ${userAnswers[choice.id] === 'true' ? 'bg-ink text-white border-ink' : 'border-border text-muted hover:border-ink hover:text-ink'}`}
+                        >
+                          Đúng
+                        </button>
+                        <button 
+                          onClick={() => handleAnswer(choice.id, 'false')}
+                          className={`px-4 py-1.5 text-[9px] uppercase font-bold tracking-widest border rounded-sm transition-all ${userAnswers[choice.id] === 'false' ? 'bg-ink text-white border-ink' : 'border-border text-muted hover:border-ink hover:text-ink'}`}
+                        >
+                          Sai
+                        </button>
+                        
+                        <AnimatePresence>
+                          {showResults && (
+                            <motion.div 
+                              initial={{ opacity: 0, x: 10 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              className={`ml-2 px-3 py-1.5 text-[9px] uppercase font-bold rounded-sm flex items-center gap-1.5 ${choice.isTrue ? 'bg-green-100 text-true' : 'bg-red-100 text-false'}`}
+                            >
+                              {choice.isTrue ? <CheckCircle2 size={12}/> : <XCircle size={12}/>}
+                              {choice.isTrue ? 'Đ' : 'S'}
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Short Answer Layout */}
+              {currentProblem.type === 'short_answer' && (
+                <div className="bg-paper p-8 border border-border rounded-xs space-y-4">
+                  <p className="text-[10px] uppercase font-bold text-muted tracking-widest">Đáp án của bạn</p>
+                  <input 
+                    type="text" 
+                    placeholder="Gõ đáp án tại đây..." 
+                    className="w-full bg-white border border-border p-4 font-serif italic focus:outline-none focus:border-ink rounded-xs"
+                    disabled={showResults}
+                  />
+                  {showResults && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-6 pt-6 border-t border-border/50">
+                      <div className="grid md:grid-cols-2 gap-8">
+                        <div>
+                          <p className="text-[10px] uppercase font-bold text-muted tracking-widest mb-2">Đáp án chính xác</p>
+                          <div className="text-xl font-serif text-ink"><FormattedMath text={currentProblem.answer || ''} /></div>
+                        </div>
+                        <div>
+                          <p className="text-[10px] uppercase font-bold text-muted tracking-widest mb-2">Hướng dẫn</p>
+                          <div className="text-sm font-serif italic text-muted"><FormattedMath text={currentProblem.solution || ''} /></div>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </div>
+              )}
+
+              {/* Essay Layout */}
+              {currentProblem.type === 'essay' && (
+                <div className="bg-paper p-8 border border-border rounded-xs">
+                  {showResults ? (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+                       <p className="text-[10px] uppercase font-bold text-muted tracking-widest">Lời giải chi tiết</p>
+                       <div className="font-serif leading-relaxed text-ink space-y-4 text-lg">
+                          <FormattedMath text={currentProblem.solution || ''} />
+                       </div>
+                    </motion.div>
+                  ) : (
+                    <div className="text-center py-12 space-y-4">
+                       <FileText size={48} className="mx-auto text-muted/30" strokeWidth={1} />
+                       <p className="text-muted font-serif italic italic">Dạng bài tự luận. Hãy nháp lời giải, sau đó đối chiếu kết quả bằng cách nhấn "Hiện đáp án".</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </section>
 
             {/* TikZ Visual (Code only) */}
@@ -557,7 +763,7 @@ export default function App() {
 
       {/* Editorial Footer */}
       <footer className="px-10 py-6 border-t border-border flex flex-col md:flex-row justify-between items-center gap-4 text-[11px] text-muted bg-paper">
-        <div>Trang {currentProblemIdx + 1} / {PROBLEMS_LIBRARY.length} &bull; Phối hợp: AI Studio Visualizer</div>
+        <div>Trang {currentProblemIdx + 1} / {problems.length} &bull; Phối hợp: AI Studio Visualizer</div>
         <div className="flex gap-4">
           <span className="px-3 py-1 border border-border rounded-full cursor-help">Phân loại: {currentProblem.category}</span>
           <span className="px-3 py-1 border border-border rounded-full">ID: {currentProblem.id}</span>
