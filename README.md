@@ -1,20 +1,19 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Công cụ dạy-học Toán
 
-# Run and deploy your AI Studio app
+Hệ thống hỗ trợ dạy và học Toán chuyên sâu, tích hợp trình trực quan hóa TikZ, giải bài tập tương tác và trợ lý AI.
 
-This contains everything you need to run your app locally.
+## Các tính năng chính
+- **Trực quan hóa TikZ**: Chuyển đổi đề bài thành mã TikZ và hình ảnh minh họa chất lượng cao.
+- **Giải toán tương tác**: Hỗ trợ giải các bài toán hình học không gian, giải tích và đại số.
+- **Trợ lý AI**: Tích hợp mô hình Gemini để hỗ trợ giáo viên và học sinh.
+- **Giao diện hiện đại**: Thiết kế tối giản, hỗ trợ công thức LaTeX (KaTeX).
 
-View your app in AI Studio: https://ai.studio/apps/60a3c193-a6e4-4aeb-986f-009ca8ba7d77
-
-## Run Locally
-
-**Prerequisites:**  Node.js
-
-
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## Cài đặt và Phát triển
+1. Cài đặt dependencies:
+   ```bash
+   npm install
+   ```
+2. Chạy môi trường phát triển:
+   ```bash
+   npm run dev
+   ```
