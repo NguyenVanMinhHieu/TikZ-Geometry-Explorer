@@ -47,8 +47,9 @@ const FormattedMath = ({ text }: { text: string }) => {
 };
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-const TTS_MODEL = "gemini-3.1-flash-tts-preview"; 
-const MAIN_MODEL = "gemini-2.0-flash";
+const TTS_MODEL = "models/gemini-2.5-flash-native-audio-latest"; 
+const MAIN_MODEL = "models/gemini-flash-latest
+";
 
 // Types
 interface Choice {
