@@ -1,0 +1,33 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,300..900;1,300..900&family=JetBrains+Mono:wght@300;400;500;600&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-serif: "Playfair Display", serif;
+
+  --color-bg: #FDFCF8;
+  --color-ink: #1A1A1A;
+  --color-muted: #666666;
+  --color-accent: #2D5D7B;
+  --color-border: #D1D1CB;
+  --color-true: #2E7D32;
+  --color-false: #C62828;
+  --color-paper-alt: #F4F2EB;
+}
+
+@layer base {
+  body {
+    @apply font-sans antialiased bg-bg text-ink;
+  }
+
+  /* Math inline style from editorial design */
+  .katex {
+    font-size: 1.05em !important;
+  }
+
+  /* Custom glass/paper effects */
+  .editorial-math-bg {
+    @apply bg-[rgba(45,93,123,0.05)] px-1 rounded-sm;
+  }
+}

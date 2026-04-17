@@ -1,0 +1,6 @@
+{
+  "name": "TikZ Geometry Explorer",
+  "description": "A refined LaTeX and TikZ visualizer for 3D geometry exercises with integrated TTS and detailed solutions.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
