@@ -1,0 +1,18 @@
+# Python Virtual Environment
+venv/
+.venv/
+env/
+.env
+
+# Streamlit logs and cache
+.streamlit/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local TeX compile artifacts (in case not cleaned up)
+*.log
+*.aux
+*.pdf
+*.svg
+!/README.md

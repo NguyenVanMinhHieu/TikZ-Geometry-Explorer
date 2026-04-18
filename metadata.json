@@ -1,6 +1,6 @@
 {
-  "name": "Tool-teach-for-math",
-  "description": "Hệ thống hỗ trợ dạy và học Toán chuyên sâu, tích hợp trình trực quan hóa TikZ, giải bài tập tương tác và trợ lý AI.",
+  "name": "MathAI-Studio-Python",
+  "description": "Hệ thống hỗ trợ dạy học Toán với khả năng Render TikZ, Import LaTeX và Trợ lý AI (Bao gồm phiên bản React Web & Python Streamlit).",
   "requestFramePermissions": [],
   "majorCapabilities": []
 }
